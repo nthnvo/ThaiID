@@ -1,0 +1,1504 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Thai ID → Excel Batch Filler</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #22263a;
+    --border: #2e3450;
+    --accent: #4f8ef7;
+    --accent2: #00d4aa;
+    --warn: #f7924f;
+    --danger: #f74f4f;
+    --text: #e8eaf6;
+    --muted: #7b82a8;
+    --green: #4fda90;
+    --card-glow: 0 0 30px rgba(79,142,247,0.12);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'IBM Plex Sans Thai', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+  }
+
+  /* ── HEADER ── */
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 24px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  .logo { font-size: 22px; font-weight: 600; letter-spacing: -0.5px; color: var(--accent); }
+  .logo span { color: var(--accent2); }
+  .subtitle { font-size: 12px; color: var(--muted); }
+  .counter-badge {
+    margin-left: auto;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    padding: 6px 16px;
+    border-radius: 20px;
+    font-size: 13px;
+    color: var(--accent2);
+    font-weight: 600;
+  }
+
+  /* ── AUTOSAVE BADGE ── */
+  .autosave-badge {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    padding: 5px 12px;
+    border-radius: 20px;
+    font-size: 11px;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: 0.3s;
+  }
+  .autosave-badge.saved { color: var(--green); border-color: var(--green); }
+  .autosave-badge .save-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--muted);
+    transition: 0.3s;
+  }
+  .autosave-badge.saved .save-dot { background: var(--green); box-shadow: 0 0 6px var(--green); }
+
+  /* ── LAYOUT ── */
+  main {
+    display: grid;
+    grid-template-columns: 380px 1fr;
+    gap: 0;
+    height: 100%;
+    overflow: hidden;
+  }
+
+  /* ── LEFT PANEL ── */
+  .left-panel {
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+  }
+
+  .panel-title {
+    padding: 16px 20px 12px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    color: var(--muted);
+    text-transform: uppercase;
+    border-bottom: 1px solid var(--border);
+  }
+
+  /* ── WEBSOCKET STATUS BAR ── */
+  .ws-bar {
+    margin: 12px 16px 4px;
+    padding: 10px 14px;
+    border-radius: 8px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 11px;
+  }
+  .ws-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--muted);
+    flex-shrink: 0;
+    transition: 0.3s;
+  }
+  .ws-dot.connected { background: var(--green); box-shadow: 0 0 8px var(--green); }
+  .ws-dot.connecting { background: var(--warn); animation: blink 1s infinite; }
+  .ws-dot.error { background: var(--danger); }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  .ws-text { flex: 1; color: var(--muted); }
+  .ws-text strong { color: var(--text); font-weight: 500; }
+  .ws-reconnect {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--muted);
+    font-family: inherit;
+    font-size: 10px;
+    padding: 3px 8px;
+    cursor: pointer;
+    transition: 0.15s;
+  }
+  .ws-reconnect:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* WS Config toggle */
+  .ws-config {
+    margin: 0 16px 8px;
+    font-size: 11px;
+  }
+  .ws-config-toggle {
+    color: var(--muted);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 0;
+  }
+  .ws-config-toggle:hover { color: var(--accent); }
+  .ws-config-body {
+    display: none;
+    margin-top: 6px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px;
+    gap: 6px;
+    flex-direction: column;
+  }
+  .ws-config-body.open { display: flex; }
+  .ws-config-body input {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    padding: 6px 10px;
+    outline: none;
+    width: 100%;
+  }
+  .ws-config-body input:focus { border-color: var(--accent); }
+  .ws-config-body label { color: var(--muted); font-size: 10px; letter-spacing: 0.5px; text-transform: uppercase; }
+
+  /* Card Reader Status */
+  .reader-status {
+    margin: 8px 16px;
+    padding: 16px;
+    border-radius: 10px;
+    border: 1.5px dashed var(--border);
+    background: var(--surface2);
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+    overflow: hidden;
+  }
+  .reader-status:hover { border-color: var(--accent); }
+  .reader-status.ready { border-color: var(--accent); border-style: solid; }
+  .reader-status.loaded { border-color: var(--green); border-style: solid; background: rgba(79,218,144,0.06); }
+  .reader-status.simulating { border-color: var(--warn); border-style: solid; }
+  .reader-status.ws-live { border-color: var(--green); border-style: solid; background: rgba(79,218,144,0.04); cursor: default; }
+
+  .reader-icon { font-size: 32px; margin-bottom: 8px; }
+  .reader-label { font-size: 13px; font-weight: 500; }
+  .reader-sub { font-size: 11px; color: var(--muted); margin-top: 4px; }
+
+  .pulse-ring {
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 60px; height: 60px;
+    border-radius: 50%;
+    border: 2px solid var(--accent);
+    transform: translate(-50%, -50%) scale(0);
+    animation: pulse-out 1.5s ease-out infinite;
+    pointer-events: none;
+  }
+  @keyframes pulse-out {
+    0% { transform: translate(-50%, -50%) scale(0); opacity: 0.8; }
+    100% { transform: translate(-50%, -50%) scale(4); opacity: 0; }
+  }
+
+  /* Manual input toggle */
+  .manual-toggle {
+    margin: 0 16px 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .manual-toggle:hover { color: var(--text); }
+  .toggle-switch {
+    width: 28px; height: 16px;
+    background: var(--border);
+    border-radius: 8px;
+    position: relative;
+    transition: 0.2s;
+    flex-shrink: 0;
+  }
+  .toggle-switch.on { background: var(--accent); }
+  .toggle-switch::after {
+    content: '';
+    position: absolute;
+    width: 12px; height: 12px;
+    background: white;
+    border-radius: 50%;
+    top: 2px; left: 2px;
+    transition: 0.2s;
+  }
+  .toggle-switch.on::after { left: 14px; }
+
+  /* ID Card Data Preview */
+  .card-preview {
+    margin: 8px 16px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px;
+  }
+  .card-preview-title {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 10px;
+  }
+  .field-row {
+    display: grid;
+    grid-template-columns: 120px 1fr;
+    gap: 4px 8px;
+    align-items: start;
+    padding: 4px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    font-size: 12px;
+  }
+  .field-row:last-child { border-bottom: none; }
+  .field-label { color: var(--muted); }
+  .field-value { color: var(--text); font-weight: 500; word-break: break-all; }
+  .field-value.en { font-family: 'IBM Plex Mono', monospace; font-size: 11px; }
+  .field-value.empty { color: var(--border); font-style: italic; }
+
+  /* Extra fields */
+  .extra-fields {
+    margin: 8px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .extra-fields label { font-size: 12px; color: var(--muted); display: block; margin-bottom: 4px; }
+  .extra-fields input {
+    width: 100%;
+    background: var(--surface2);
+    border: 1.5px solid var(--border);
+    border-radius: 8px;
+    padding: 9px 12px;
+    color: var(--text);
+    font-family: inherit;
+    font-size: 13px;
+    outline: none;
+    transition: 0.15s;
+  }
+  .extra-fields input:focus { border-color: var(--accent); }
+  .extra-fields input::placeholder { color: var(--muted); }
+
+  /* Buttons */
+  .btn {
+    border: none;
+    border-radius: 8px;
+    padding: 10px 18px;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: 0.15s;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    justify-content: center;
+  }
+  .btn-primary { background: var(--accent); color: white; }
+  .btn-primary:hover { background: #6ba0ff; }
+  .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-success { background: var(--green); color: #0a2018; }
+  .btn-success:hover { background: #62e8a0; }
+  .btn-danger { background: rgba(247,79,79,0.15); color: var(--danger); border: 1px solid var(--danger); }
+  .btn-danger:hover { background: rgba(247,79,79,0.25); }
+  .btn-muted { background: var(--surface2); color: var(--muted); border: 1px solid var(--border); }
+  .btn-muted:hover { color: var(--text); border-color: var(--text); }
+  .btn-warn { background: rgba(247,146,79,0.15); color: var(--warn); border: 1px solid var(--warn); }
+  .btn-warn:hover { background: rgba(247,146,79,0.25); }
+
+  .action-row {
+    padding: 12px 16px;
+    display: flex;
+    gap: 8px;
+  }
+  .action-row .btn { flex: 1; }
+
+  /* ── RIGHT PANEL ── */
+  .right-panel {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .table-toolbar {
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--surface);
+  }
+  .table-toolbar h2 { font-size: 14px; font-weight: 600; flex: 1; }
+
+  .table-wrap {
+    flex: 1;
+    overflow: auto;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11.5px;
+  }
+  thead th {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 8px 10px;
+    white-space: nowrap;
+    color: var(--muted);
+    font-weight: 600;
+    font-size: 10px;
+    letter-spacing: 0.5px;
+    text-align: left;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+  }
+  thead th .col-th { color: var(--accent2); font-family: 'IBM Plex Mono', monospace; display: block; font-size: 9px; }
+  tbody tr { transition: 0.1s; }
+  tbody tr:hover td { background: var(--surface2); }
+  tbody tr:nth-child(even) td { background: rgba(255,255,255,0.015); }
+  tbody td {
+    border: 1px solid var(--border);
+    padding: 7px 10px;
+    white-space: nowrap;
+    max-width: 140px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--text);
+  }
+  .row-num { color: var(--muted); font-family: 'IBM Plex Mono', monospace; text-align: center; }
+  .en-cell { font-family: 'IBM Plex Mono', monospace; color: #a5c8ff; }
+  .del-btn {
+    background: none;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 14px;
+    padding: 2px 6px;
+    border-radius: 4px;
+  }
+  .del-btn:hover { background: rgba(247,79,79,0.15); color: var(--danger); }
+
+  .empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--muted);
+  }
+  .empty-state .big { font-size: 48px; margin-bottom: 16px; }
+  .empty-state p { font-size: 14px; }
+
+  /* Manual input modal */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+  }
+  .modal-overlay.show { display: flex; }
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 24px;
+    width: 560px;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: var(--card-glow), 0 20px 60px rgba(0,0,0,0.5);
+  }
+  .modal h3 { font-size: 16px; font-weight: 600; margin-bottom: 16px; color: var(--accent); }
+  .modal-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .modal-grid .full { grid-column: 1/-1; }
+  .modal label { font-size: 12px; color: var(--muted); display: block; margin-bottom: 4px; }
+  .modal input, .modal select {
+    width: 100%;
+    background: var(--surface2);
+    border: 1.5px solid var(--border);
+    border-radius: 8px;
+    padding: 9px 12px;
+    color: var(--text);
+    font-family: inherit;
+    font-size: 13px;
+    outline: none;
+    transition: 0.15s;
+  }
+  .modal input:focus, .modal select:focus { border-color: var(--accent); }
+  .modal select option { background: var(--surface2); }
+  .modal-actions { display: flex; gap: 10px; margin-top: 16px; }
+  .modal-actions .btn { flex: 1; }
+
+  /* Toast */
+  .toast {
+    position: fixed;
+    bottom: 24px; right: 24px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 20px;
+    font-size: 13px;
+    z-index: 200;
+    transform: translateY(80px);
+    opacity: 0;
+    transition: 0.3s;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    max-width: 360px;
+  }
+  .toast.show { transform: translateY(0); opacity: 1; }
+  .toast.success { border-color: var(--green); }
+  .toast.error { border-color: var(--danger); }
+  .toast.warn { border-color: var(--warn); }
+
+  /* FOOTER */
+  footer {
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    padding: 10px 24px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .footer-status { display: flex; align-items: center; gap: 6px; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
+  .dot.green { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .dot.yellow { background: var(--warn); }
+
+  .progress-bar-wrap {
+    flex: 1;
+    max-width: 200px;
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .progress-bar { height: 100%; background: var(--accent2); transition: 0.3s; }
+
+  /* Restored data notice */
+  .restore-notice {
+    display: none;
+    margin: 8px 16px 0;
+    padding: 10px 14px;
+    background: rgba(0,212,170,0.08);
+    border: 1px solid var(--accent2);
+    border-radius: 8px;
+    font-size: 11px;
+    color: var(--accent2);
+    align-items: center;
+    gap: 8px;
+  }
+  .restore-notice.show { display: flex; }
+  .restore-notice button {
+    margin-left: auto;
+    background: none;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 14px;
+    padding: 0;
+  }
+  .restore-notice button:hover { color: var(--danger); }
+
+  /* How-to guide */
+  .guide-box {
+    margin: 8px 16px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .guide-header {
+    padding: 8px 12px;
+    font-size: 11px;
+    color: var(--muted);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    user-select: none;
+  }
+  .guide-header:hover { color: var(--text); }
+  .guide-body {
+    display: none;
+    padding: 10px 12px;
+    font-size: 11px;
+    color: var(--muted);
+    border-top: 1px solid var(--border);
+    line-height: 1.7;
+  }
+  .guide-body.open { display: block; }
+  .guide-body code {
+    font-family: 'IBM Plex Mono', monospace;
+    background: var(--bg);
+    border-radius: 4px;
+    padding: 1px 5px;
+    color: var(--accent2);
+    font-size: 10px;
+  }
+  .guide-body .step { margin-bottom: 6px; }
+  .guide-body .step-num {
+    display: inline-block;
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: white;
+    font-size: 9px;
+    text-align: center;
+    line-height: 16px;
+    margin-right: 6px;
+    flex-shrink: 0;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <div class="logo">🪪 Thai<span>ID</span> → Excel</div>
+    <div class="subtitle">ระบบอ่านบัตรประชาชนและส่งออก Excel สำหรับเปิดบัญชีกลุ่ม</div>
+  </div>
+  <div class="autosave-badge" id="autosaveBadge">
+    <div class="save-dot"></div>
+    <span id="autosaveText">Auto-save พร้อม</span>
+  </div>
+  <div class="counter-badge" id="counterBadge">0 รายการ</div>
+</header>
+
+<main>
+  <!-- LEFT: Card Reader + Form -->
+  <div class="left-panel">
+    <div class="panel-title">เครื่องอ่านบัตร</div>
+
+    <!-- Restore notice -->
+    <div class="restore-notice" id="restoreNotice">
+      <span>💾</span>
+      <span id="restoreText">พบข้อมูลที่บันทึกไว้</span>
+      <button onclick="dismissRestore()" title="ปิด">✕</button>
+    </div>
+
+    <!-- WebSocket Status -->
+    <div class="ws-bar">
+      <div class="ws-dot" id="wsDot"></div>
+      <div class="ws-text">
+        <strong id="wsStatusText">ยังไม่ได้เชื่อมต่อ</strong><br>
+        <span id="wsSubText">เครื่องอ่านบัตร WebSocket</span>
+      </div>
+      <button class="ws-reconnect" id="wsReconnectBtn" onclick="connectWebSocket()">เชื่อมต่อ</button>
+    </div>
+
+    <!-- WS Config -->
+    <div class="ws-config">
+      <div class="ws-config-toggle" onclick="toggleWsConfig()">
+        ⚙️ ตั้งค่า WebSocket URL <span id="wsConfigArrow">▶</span>
+      </div>
+      <div class="ws-config-body" id="wsConfigBody">
+        <label>WebSocket URL (Bridge Server)</label>
+        <input type="text" id="wsUrlInput" value="ws://localhost:3001" placeholder="ws://localhost:3001">
+        <button class="btn btn-muted" style="font-size:11px;padding:5px 10px" onclick="saveWsUrl()">บันทึก URL</button>
+      </div>
+    </div>
+
+    <!-- How to connect guide -->
+    <div class="guide-box">
+      <div class="guide-header" onclick="toggleGuide()">
+        📖 วิธีเชื่อมต่อเครื่องอ่านบัตรจริง <span id="guideArrow">▶</span>
+      </div>
+      <div class="guide-body" id="guideBody">
+        <div class="step"><span class="step-num">1</span>ติดตั้ง Node.js และ driver เครื่องอ่านบัตร (PC/SC)</div>
+        <div class="step"><span class="step-num">2</span>สร้างไฟล์ <code>bridge.js</code> แล้วรัน <code>node bridge.js</code></div>
+        <div class="step"><span class="step-num">3</span>กด "เชื่อมต่อ" ด้านบน หรือตั้งค่า URL ให้ตรงกับ bridge</div>
+        <div class="step"><span class="step-num">4</span>Bridge จะส่งข้อมูลบัตรมาเป็น JSON ตาม schema ด้านล่าง</div>
+        <div style="margin-top:8px;padding:8px;background:var(--bg);border-radius:6px;font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--accent2);line-height:1.8">
+          { "id":"1234...", "prefix_th":"นาย",<br>
+          &nbsp;&nbsp;"fname_th":"ชื่อ", "lname_th":"นามสกุล",<br>
+          &nbsp;&nbsp;"fname_en":"NAME", "lname_en":"SURNAME",<br>
+          &nbsp;&nbsp;"dob":"DD/MM/YYYY", "province":"..." }
+        </div>
+        <div style="margin-top:8px;color:var(--warn)">
+          ⚠️ ถ้าไม่มี bridge server ให้ใช้โหมดกรอกข้อมูลเองด้านล่าง
+        </div>
+      </div>
+    </div>
+
+    <div class="reader-status" id="readerStatus" onclick="handleReaderClick()">
+      <div class="reader-icon" id="readerIcon">💳</div>
+      <div class="reader-label" id="readerLabel">เสียบบัตรประชาชน</div>
+      <div class="reader-sub" id="readerSub">รอสัญญาณจากเครื่องอ่าน...</div>
+      <div class="pulse-ring" id="pulseRing" style="display:none"></div>
+    </div>
+
+    <div class="manual-toggle" onclick="toggleManual()">
+      <div class="toggle-switch" id="manualToggle"></div>
+      <span>โหมดกรอกข้อมูลเอง (Demo / ทดสอบ)</span>
+    </div>
+
+    <div class="card-preview" id="cardPreview">
+      <div class="card-preview-title">ข้อมูลในบัตร</div>
+      <div id="cardFields">
+        <div style="color:var(--muted);font-size:12px;text-align:center;padding:12px 0;">ยังไม่มีข้อมูล</div>
+      </div>
+    </div>
+
+    <div class="extra-fields">
+      <div>
+        <label>📱 เบอร์โทรศัพท์มือถือ (ไม่มีขีด/เว้นวรรค)</label>
+        <input type="tel" id="inputPhone" placeholder="เช่น 0812345678" maxlength="10"
+          oninput="this.value=this.value.replace(/[^0-9]/g,'')">
+      </div>
+      <div>
+        <label>✉️ อีเมล (ถ้ามี)</label>
+        <input type="email" id="inputEmail" placeholder="เช่น name@email.com">
+      </div>
+    </div>
+
+    <div class="action-row">
+      <button class="btn btn-success" id="addBtn" onclick="addRecord()" disabled>
+        ➕ เพิ่มรายการ
+      </button>
+      <button class="btn btn-muted" onclick="clearCurrent()">
+        🔄 ล้าง
+      </button>
+    </div>
+  </div>
+
+  <!-- RIGHT: Table + Export -->
+  <div class="right-panel">
+    <div class="table-toolbar">
+      <h2>รายการที่บันทึกแล้ว</h2>
+      <button class="btn btn-warn" onclick="exportBackup()" style="font-size:12px;padding:7px 12px" title="สำรองข้อมูลเป็น JSON">
+        💾 Backup JSON
+      </button>
+      <button class="btn btn-muted" onclick="importBackup()" style="font-size:12px;padding:7px 12px" title="โหลดไฟล์ Backup">
+        📂 โหลด Backup
+      </button>
+      <input type="file" id="importFileInput" accept=".json" style="display:none" onchange="handleImportFile(event)">
+      <button class="btn btn-danger" onclick="clearAll()" style="font-size:12px;padding:7px 12px">🗑 ล้างทั้งหมด</button>
+      <button class="btn btn-primary" onclick="exportExcel()" id="exportBtn">
+        📥 ส่งออก Excel
+      </button>
+    </div>
+    <div class="table-wrap">
+      <div id="tableContainer">
+        <div class="empty-state">
+          <div class="big">📋</div>
+          <p>ยังไม่มีรายการ</p>
+          <p style="margin-top:6px;font-size:12px">เสียบบัตรแล้วกด "เพิ่มรายการ" เพื่อบันทึก</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <div class="footer-status">
+    <div class="dot" id="statusDot"></div>
+    <span id="statusText">รอเสียบบัตร</span>
+  </div>
+  <div class="progress-bar-wrap">
+    <div class="progress-bar" id="progressBar" style="width:0%"></div>
+  </div>
+  <span id="footerCount">0 / 500 รายการ</span>
+  <span id="lastSavedText" style="margin-left:auto;color:var(--muted)">—</span>
+  <span>Template: Open_Account_By_Batch_Individual_V2.2</span>
+</footer>
+
+<!-- Manual Input Modal -->
+<div class="modal-overlay" id="manualModal">
+  <div class="modal">
+    <h3>📝 กรอกข้อมูลบัตรประชาชนด้วยตนเอง</h3>
+    <div class="modal-grid">
+      <div class="full">
+        <label>เลขบัตรประชาชน 13 หลัก *</label>
+        <input type="text" id="m_id" placeholder="1234567890123" maxlength="13"
+          oninput="this.value=this.value.replace(/[^0-9]/g,'')">
+      </div>
+      <div>
+        <label>คำนำหน้า (ไทย) *</label>
+        <select id="m_prefix_th">
+          <option value="นาย">นาย</option>
+          <option value="นาง">นาง</option>
+          <option value="น.ส.">น.ส.</option>
+          <option value="เด็กชาย">เด็กชาย</option>
+          <option value="เด็กหญิง">เด็กหญิง</option>
+        </select>
+      </div>
+      <div>
+        <label>คำนำหน้า (อังกฤษ) *</label>
+        <select id="m_prefix_en">
+          <option value="MR.">MR.</option>
+          <option value="MRS.">MRS.</option>
+          <option value="MISS">MISS</option>
+        </select>
+      </div>
+      <div>
+        <label>ชื่อ (ไทย) *</label>
+        <input type="text" id="m_fname_th" placeholder="สมชาย">
+      </div>
+      <div>
+        <label>นามสกุล (ไทย) *</label>
+        <input type="text" id="m_lname_th" placeholder="ใจดี">
+      </div>
+      <div>
+        <label>ชื่อกลาง (ไทย)</label>
+        <input type="text" id="m_mname_th" placeholder="(ถ้ามี)">
+      </div>
+      <div>
+        <label>ชื่อ (อังกฤษ) *</label>
+        <input type="text" id="m_fname_en" placeholder="SOMCHAI" oninput="this.value=this.value.toUpperCase()">
+      </div>
+      <div>
+        <label>นามสกุล (อังกฤษ) *</label>
+        <input type="text" id="m_lname_en" placeholder="JAIDEE" oninput="this.value=this.value.toUpperCase()">
+      </div>
+      <div>
+        <label>ชื่อกลาง (อังกฤษ)</label>
+        <input type="text" id="m_mname_en" placeholder="(ถ้ามี)" oninput="this.value=this.value.toUpperCase()">
+      </div>
+      <div>
+        <label>วันเกิด (พ.ศ.) DD/MM/YYYY</label>
+        <input type="text" id="m_dob" placeholder="01/01/2530" maxlength="10">
+      </div>
+      <div>
+        <label>วันออกบัตร (พ.ศ.) DD/MM/YYYY</label>
+        <input type="text" id="m_issue" placeholder="01/01/2565">
+      </div>
+      <div>
+        <label>วันหมดอายุ (พ.ศ.) DD/MM/YYYY</label>
+        <input type="text" id="m_expiry" placeholder="01/01/2575">
+      </div>
+      <div class="full">
+        <label>เลขที่/อาคาร/ชั้น/หมู่บ้าน</label>
+        <input type="text" id="m_addr1" placeholder="123/4">
+      </div>
+      <div>
+        <label>หมู่ที่/ตรอก/ซอย</label>
+        <input type="text" id="m_soi" placeholder="2">
+      </div>
+      <div>
+        <label>ถนน</label>
+        <input type="text" id="m_road" placeholder="พหลโยธิน">
+      </div>
+      <div>
+        <label>จังหวัด</label>
+        <input type="text" id="m_province" placeholder="กรุงเทพมหานคร">
+      </div>
+      <div>
+        <label>เขต/อำเภอ</label>
+        <input type="text" id="m_district" placeholder="จตุจักร">
+      </div>
+      <div class="full">
+        <label>แขวง/ตำบล</label>
+        <input type="text" id="m_subdistrict" placeholder="จตุจักร">
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-primary" onclick="loadManualData()">✅ โหลดข้อมูล</button>
+      <button class="btn btn-muted" onclick="closeModal()">ยกเลิก</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ─── STATE ────────────────────────────────────────────
+let records = [];
+let currentCard = null;
+let manualMode = false;
+let recordIdCounter = 0;
+
+const STORAGE_KEY = 'thai_id_records_v1';
+const STORAGE_META = 'thai_id_meta_v1';
+const WS_URL_KEY   = 'thai_id_ws_url';
+
+// ─── WEBSOCKET STATE ──────────────────────────────────
+let ws = null;
+let wsConnected = false;
+let wsReconnectTimer = null;
+let wsManualDisconnect = false;
+
+// ─── INIT ─────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => {
+  loadFromStorage();
+  loadWsUrl();
+  // Try auto-connect if we have a saved URL
+  const savedUrl = localStorage.getItem(WS_URL_KEY);
+  if (savedUrl) connectWebSocket();
+});
+
+// ─── ████████  AUTO-SAVE (localStorage)  ████████ ─────
+
+function saveToStorage() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+    const now = new Date();
+    localStorage.setItem(STORAGE_META, JSON.stringify({
+      savedAt: now.toISOString(),
+      count: records.length,
+      maxId: recordIdCounter
+    }));
+    showAutosaveBadge(now);
+  } catch(e) {
+    showToast('⚠️ บันทึก localStorage ล้มเหลว: ' + e.message, 'error');
+  }
+}
+
+function loadFromStorage() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    const meta = localStorage.getItem(STORAGE_META);
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed) || parsed.length === 0) return;
+
+    records = parsed;
+    // Restore highest _id counter
+    recordIdCounter = parsed.reduce((mx, r) => Math.max(mx, r._id || 0), 0);
+
+    renderTable();
+    updateCounter();
+
+    // Show restore notice
+    const metaParsed = meta ? JSON.parse(meta) : null;
+    const savedAt = metaParsed ? new Date(metaParsed.savedAt) : null;
+    const notice = document.getElementById('restoreNotice');
+    const noticeText = document.getElementById('restoreText');
+    noticeText.textContent = `🔄 โหลดข้อมูล ${records.length} รายการ จากการบันทึกล่าสุด${savedAt ? ' เวลา ' + formatTime(savedAt) : ''}`;
+    notice.classList.add('show');
+
+    showAutosaveBadge(savedAt || new Date());
+    showToast(`💾 โหลดข้อมูลที่บันทึกไว้ ${records.length} รายการ`, 'success');
+  } catch(e) {
+    console.warn('Could not restore data:', e);
+  }
+}
+
+function dismissRestore() {
+  document.getElementById('restoreNotice').classList.remove('show');
+}
+
+let autosaveFlashTimer;
+function showAutosaveBadge(date) {
+  const badge = document.getElementById('autosaveBadge');
+  const text = document.getElementById('autosaveText');
+  badge.classList.add('saved');
+  text.textContent = `บันทึกแล้ว ${formatTime(date)}`;
+  document.getElementById('lastSavedText').textContent = `💾 บันทึก ${formatTime(date)}`;
+  clearTimeout(autosaveFlashTimer);
+  autosaveFlashTimer = setTimeout(() => {
+    badge.classList.remove('saved');
+    text.textContent = `Auto-save พร้อม`;
+  }, 4000);
+}
+
+function formatTime(date) {
+  return date.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+// ─── ████████  WEBSOCKET CARD READER  ████████ ────────
+
+function loadWsUrl() {
+  const saved = localStorage.getItem(WS_URL_KEY) || 'ws://localhost:3001';
+  document.getElementById('wsUrlInput').value = saved;
+}
+
+function saveWsUrl() {
+  const url = document.getElementById('wsUrlInput').value.trim();
+  if (!url.startsWith('ws://') && !url.startsWith('wss://')) {
+    showToast('⚠️ URL ต้องขึ้นต้นด้วย ws:// หรือ wss://', 'error');
+    return;
+  }
+  localStorage.setItem(WS_URL_KEY, url);
+  showToast('✅ บันทึก URL แล้ว กด "เชื่อมต่อ"', 'success');
+}
+
+function toggleWsConfig() {
+  const body = document.getElementById('wsConfigBody');
+  const arrow = document.getElementById('wsConfigArrow');
+  const open = body.classList.toggle('open');
+  arrow.textContent = open ? '▼' : '▶';
+}
+
+function toggleGuide() {
+  const body = document.getElementById('guideBody');
+  const arrow = document.getElementById('guideArrow');
+  const open = body.classList.toggle('open');
+  arrow.textContent = open ? '▼' : '▶';
+}
+
+function setWsStatus(state, mainText, subText) {
+  // state: 'disconnected' | 'connecting' | 'connected' | 'error'
+  const dot = document.getElementById('wsDot');
+  const main = document.getElementById('wsStatusText');
+  const sub = document.getElementById('wsSubText');
+  const btn = document.getElementById('wsReconnectBtn');
+
+  dot.className = 'ws-dot';
+  if (state === 'connected') dot.classList.add('connected');
+  else if (state === 'connecting') dot.classList.add('connecting');
+  else if (state === 'error') dot.classList.add('error');
+
+  main.textContent = mainText;
+  sub.textContent = subText;
+
+  if (state === 'connected') {
+    btn.textContent = 'ตัดการเชื่อมต่อ';
+    btn.onclick = disconnectWebSocket;
+  } else {
+    btn.textContent = 'เชื่อมต่อ';
+    btn.onclick = connectWebSocket;
+  }
+}
+
+function connectWebSocket() {
+  const url = document.getElementById('wsUrlInput').value.trim() || 'ws://localhost:3001';
+  localStorage.setItem(WS_URL_KEY, url);
+  wsManualDisconnect = false;
+
+  if (ws) {
+    ws.onclose = null; // prevent auto-reconnect trigger from old socket
+    ws.close();
+  }
+
+  setWsStatus('connecting', 'กำลังเชื่อมต่อ...', url);
+
+  try {
+    ws = new WebSocket(url);
+  } catch(e) {
+    setWsStatus('error', 'URL ไม่ถูกต้อง', e.message);
+    return;
+  }
+
+  ws.onopen = () => {
+    wsConnected = true;
+    clearTimeout(wsReconnectTimer);
+    setWsStatus('connected', 'เชื่อมต่อสำเร็จ ✓', url);
+    setStatus('เครื่องอ่านบัตรพร้อมใช้งาน', 'green');
+
+    // Switch reader area to "waiting for card" live mode
+    const readerStatus = document.getElementById('readerStatus');
+    readerStatus.className = 'reader-status ws-live';
+    document.getElementById('readerIcon').textContent = '🟢';
+    document.getElementById('readerLabel').textContent = 'รอบัตรประชาชน...';
+    document.getElementById('readerSub').textContent = 'เสียบบัตรเข้าเครื่องอ่านได้เลย';
+
+    showToast('🟢 เชื่อมต่อเครื่องอ่านบัตรสำเร็จ', 'success');
+  };
+
+  ws.onmessage = (event) => {
+    try {
+      const data = JSON.parse(event.data);
+      // Support two message formats:
+      // 1. Direct card object
+      // 2. { type: "card", data: {...} }
+      const card = (data.type === 'card' && data.data) ? data.data : data;
+      if (card && card.id && card.fname_th) {
+        loadCardData(card);
+      }
+    } catch(e) {
+      console.warn('WS message parse error:', e);
+    }
+  };
+
+  ws.onerror = () => {
+    wsConnected = false;
+    setWsStatus('error', 'เชื่อมต่อไม่ได้', 'Bridge server ไม่ตอบสนอง');
+  };
+
+  ws.onclose = () => {
+    wsConnected = false;
+    if (!wsManualDisconnect) {
+      setWsStatus('error', 'การเชื่อมต่อหลุด', 'จะลองเชื่อมต่อใหม่ใน 5 วินาที...');
+      // Reset reader area
+      const readerStatus = document.getElementById('readerStatus');
+      readerStatus.className = 'reader-status';
+      document.getElementById('readerIcon').textContent = '💳';
+      document.getElementById('readerLabel').textContent = manualMode ? 'คลิกเพื่อกรอกข้อมูลเอง' : 'เสียบบัตรประชาชน';
+      document.getElementById('readerSub').textContent = 'การเชื่อมต่อหลุด — รอเชื่อมต่อใหม่...';
+      // Auto-reconnect after 5s
+      wsReconnectTimer = setTimeout(() => {
+        if (!wsManualDisconnect) connectWebSocket();
+      }, 5000);
+    } else {
+      setWsStatus('disconnected', 'ยกเลิกการเชื่อมต่อ', url);
+    }
+  };
+}
+
+function disconnectWebSocket() {
+  wsManualDisconnect = true;
+  clearTimeout(wsReconnectTimer);
+  if (ws) ws.close();
+  wsConnected = false;
+  setWsStatus('disconnected', 'ยกเลิกการเชื่อมต่อ', '—');
+  const readerStatus = document.getElementById('readerStatus');
+  readerStatus.className = 'reader-status';
+  document.getElementById('readerIcon').textContent = '💳';
+  document.getElementById('readerLabel').textContent = 'เสียบบัตรประชาชน';
+  document.getElementById('readerSub').textContent = 'รอสัญญาณจากเครื่องอ่าน...';
+}
+
+// ─── READER SIMULATION ───────────────────────────────
+function handleReaderClick() {
+  if (wsConnected) return; // Don't simulate if real reader is connected
+  if (!manualMode) {
+    simulateCardRead();
+  } else {
+    document.getElementById('manualModal').classList.add('show');
+  }
+}
+
+function simulateCardRead() {
+  const status = document.getElementById('readerStatus');
+  const icon = document.getElementById('readerIcon');
+  const label = document.getElementById('readerLabel');
+  const sub = document.getElementById('readerSub');
+  const pulse = document.getElementById('pulseRing');
+
+  status.className = 'reader-status simulating';
+  icon.textContent = '⚡';
+  label.textContent = 'กำลังอ่านบัตร...';
+  sub.textContent = 'โปรดรอสักครู่';
+  pulse.style.display = 'block';
+  setStatus('กำลังอ่านบัตร...', 'yellow');
+
+  setTimeout(() => {
+    pulse.style.display = 'none';
+    const demoCards = [
+      {
+        id:'1234567890123', prefix_th:'นาย', prefix_en:'MR.',
+        fname_th:'สมชาย', lname_th:'ใจดี', mname_th:'',
+        fname_en:'SOMCHAI', lname_en:'JAIDEE', mname_en:'',
+        dob:'01/05/2530', issue_date:'15/03/2565', expiry_date:'14/03/2575',
+        addr1:'123/4', soi:'2', road:'พหลโยธิน',
+        province:'กรุงเทพมหานคร', district:'จตุจักร', subdistrict:'จตุจักร'
+      },
+      {
+        id:'9876543210987', prefix_th:'น.ส.', prefix_en:'MISS',
+        fname_th:'สุดา', lname_th:'รักเรียน', mname_th:'',
+        fname_en:'SUDA', lname_en:'RAKRIEAN', mname_en:'',
+        dob:'22/11/2545', issue_date:'10/01/2566', expiry_date:'09/01/2576',
+        addr1:'456', soi:'5', road:'รัชดาภิเษก',
+        province:'กรุงเทพมหานคร', district:'ห้วยขวาง', subdistrict:'ห้วยขวาง'
+      }
+    ];
+    const card = demoCards[Math.floor(Math.random() * demoCards.length)];
+    loadCardData(card);
+  }, 1200);
+}
+
+function loadCardData(card) {
+  currentCard = card;
+  const status = document.getElementById('readerStatus');
+  if (!wsConnected) status.className = 'reader-status loaded';
+  document.getElementById('readerIcon').textContent = '✅';
+  document.getElementById('readerLabel').textContent = `บัตร: ${card.prefix_th}${card.fname_th} ${card.lname_th}`;
+  document.getElementById('readerSub').textContent = `เลข: ${card.id}`;
+  setStatus('อ่านบัตรสำเร็จ — กรอกข้อมูลเพิ่มเติมแล้วกด "เพิ่มรายการ"', 'green');
+  renderCardFields(card);
+  document.getElementById('addBtn').disabled = false;
+  document.getElementById('inputPhone').focus();
+}
+
+function renderCardFields(card) {
+  const fields = [
+    ['เลขบัตรฯ', card.id],
+    ['คำนำหน้า (ไทย)', card.prefix_th],
+    ['ชื่อ (ไทย)', card.fname_th],
+    ['นามสกุล (ไทย)', card.lname_th],
+    ['ชื่อกลาง (ไทย)', card.mname_th || '-'],
+    ['ชื่อ (EN)', card.fname_en, true],
+    ['นามสกุล (EN)', card.lname_en, true],
+    ['ชื่อกลาง (EN)', card.mname_en || '-', true],
+    ['วันเกิด', card.dob],
+    ['วันออกบัตร', card.issue_date],
+    ['วันหมดอายุ', card.expiry_date],
+    ['ที่อยู่', card.addr1],
+    ['ซอย', card.soi || '-'],
+    ['ถนน', card.road || '-'],
+    ['จังหวัด', card.province],
+    ['เขต/อำเภอ', card.district],
+    ['แขวง/ตำบล', card.subdistrict],
+  ];
+
+  document.getElementById('cardFields').innerHTML = fields.map(([label, val, en]) => `
+    <div class="field-row">
+      <span class="field-label">${label}</span>
+      <span class="field-value ${en?'en':''} ${!val||val==='-'?'empty':''}">${val||'-'}</span>
+    </div>
+  `).join('');
+}
+
+// ─── MANUAL MODE ─────────────────────────────────────
+function toggleManual() {
+  manualMode = !manualMode;
+  const t = document.getElementById('manualToggle');
+  t.className = 'toggle-switch' + (manualMode ? ' on' : '');
+  const label = document.getElementById('readerLabel');
+  const sub = document.getElementById('readerSub');
+  if (manualMode) {
+    label.textContent = 'คลิกเพื่อกรอกข้อมูลเอง';
+    sub.textContent = 'โหมด Demo/ทดสอบ';
+    if (!wsConnected) document.getElementById('readerStatus').className = 'reader-status ready';
+  } else {
+    label.textContent = 'เสียบบัตรประชาชน';
+    sub.textContent = wsConnected ? 'เสียบบัตรเข้าเครื่องอ่านได้เลย' : 'รอสัญญาณจากเครื่องอ่าน...';
+    if (!wsConnected) document.getElementById('readerStatus').className = 'reader-status';
+  }
+}
+
+function loadManualData() {
+  const get = id => document.getElementById(id).value.trim();
+  const id = get('m_id');
+  if (!id || id.length !== 13) { showToast('⚠️ กรุณากรอกเลขบัตร 13 หลัก', 'error'); return; }
+
+  const card = {
+    id: id,
+    prefix_th: get('m_prefix_th'),
+    prefix_en: get('m_prefix_en'),
+    fname_th: get('m_fname_th'),
+    lname_th: get('m_lname_th'),
+    mname_th: get('m_mname_th'),
+    fname_en: get('m_fname_en').toUpperCase(),
+    lname_en: get('m_lname_en').toUpperCase(),
+    mname_en: get('m_mname_en').toUpperCase(),
+    dob: get('m_dob'),
+    issue_date: get('m_issue'),
+    expiry_date: get('m_expiry'),
+    addr1: get('m_addr1'),
+    soi: get('m_soi'),
+    road: get('m_road'),
+    province: get('m_province'),
+    district: get('m_district'),
+    subdistrict: get('m_subdistrict'),
+  };
+  closeModal();
+  loadCardData(card);
+}
+
+function closeModal() {
+  document.getElementById('manualModal').classList.remove('show');
+}
+
+// ─── ADD RECORD ───────────────────────────────────────
+function addRecord() {
+  if (!currentCard) return;
+  const phone = document.getElementById('inputPhone').value.trim();
+  const email = document.getElementById('inputEmail').value.trim();
+
+  const row = {
+    _id: ++recordIdCounter,
+    id: currentCard.id,
+    prefix_th: currentCard.prefix_th,
+    fname_th: currentCard.fname_th,
+    lname_th: currentCard.lname_th,
+    mname_th: currentCard.mname_th || '',
+    fname_en: (currentCard.fname_en || '').toUpperCase(),
+    lname_en: (currentCard.lname_en || '').toUpperCase(),
+    mname_en: (currentCard.mname_en || '').toUpperCase(),
+    dob: currentCard.dob || '',
+    issue_date: currentCard.issue_date || '',
+    expiry_date: currentCard.expiry_date || '',
+    addr1: currentCard.addr1 || '',
+    soi: currentCard.soi || '',
+    road: currentCard.road || '',
+    province: currentCard.province || '',
+    district: currentCard.district || '',
+    subdistrict: currentCard.subdistrict || '',
+    phone: phone.replace(/[-\s]/g,''),
+    email: email,
+  };
+
+  records.push(row);
+  saveToStorage(); // ← AUTO-SAVE ทุกครั้งที่เพิ่ม
+  renderTable();
+  clearCurrent();
+  updateCounter();
+  showToast(`✅ เพิ่ม ${row.prefix_th}${row.fname_th} ${row.lname_th} แล้ว (${records.length} รายการ)`, 'success');
+}
+
+function clearCurrent() {
+  currentCard = null;
+  document.getElementById('inputPhone').value = '';
+  document.getElementById('inputEmail').value = '';
+  document.getElementById('addBtn').disabled = true;
+  if (!wsConnected) {
+    document.getElementById('readerStatus').className = 'reader-status' + (manualMode ? ' ready' : '');
+    document.getElementById('readerIcon').textContent = '💳';
+    document.getElementById('readerLabel').textContent = manualMode ? 'คลิกเพื่อกรอกข้อมูลเอง' : 'เสียบบัตรประชาชน';
+    document.getElementById('readerSub').textContent = manualMode ? 'โหมด Demo/ทดสอบ' : 'รอสัญญาณจากเครื่องอ่าน...';
+  } else {
+    document.getElementById('readerIcon').textContent = '🟢';
+    document.getElementById('readerLabel').textContent = 'รอบัตรประชาชน...';
+    document.getElementById('readerSub').textContent = 'เสียบบัตรเข้าเครื่องอ่านได้เลย';
+  }
+  document.getElementById('cardFields').innerHTML = '<div style="color:var(--muted);font-size:12px;text-align:center;padding:12px 0;">ยังไม่มีข้อมูล</div>';
+  setStatus(wsConnected ? 'เครื่องอ่านบัตรพร้อมใช้งาน' : 'รอเสียบบัตร', wsConnected ? 'green' : 'idle');
+}
+
+function clearAll() {
+  if (records.length === 0) return;
+  if (!confirm(`ลบรายการทั้งหมด ${records.length} รายการ?\n\n⚠️ การดำเนินการนี้ไม่สามารถยกเลิกได้`)) return;
+  records = [];
+  recordIdCounter = 0;
+  saveToStorage();
+  renderTable();
+  updateCounter();
+  showToast('🗑 ล้างข้อมูลทั้งหมดแล้ว', 'error');
+}
+
+function deleteRecord(id) {
+  records = records.filter(r => r._id !== id);
+  saveToStorage(); // ← AUTO-SAVE ทุกครั้งที่ลบ
+  renderTable();
+  updateCounter();
+}
+
+// ─── TABLE RENDER ────────────────────────────────────
+function renderTable() {
+  const container = document.getElementById('tableContainer');
+  if (records.length === 0) {
+    container.innerHTML = `<div class="empty-state"><div class="big">📋</div><p>ยังไม่มีรายการ</p><p style="margin-top:6px;font-size:12px">เสียบบัตรแล้วกด "เพิ่มรายการ" เพื่อบันทึก</p></div>`;
+    return;
+  }
+
+  const cols = [
+    {key:'id', label:'เลขบัตรฯ', col:'A'},
+    {key:'prefix_th', label:'คำนำหน้า', col:'B'},
+    {key:'fname_th', label:'ชื่อ(ไทย)', col:'C'},
+    {key:'lname_th', label:'นามสกุล(ไทย)', col:'D'},
+    {key:'mname_th', label:'ชื่อกลาง(ไทย)', col:'E'},
+    {key:'fname_en', label:'ชื่อ(EN)', col:'F', en:true},
+    {key:'lname_en', label:'นามสกุล(EN)', col:'G', en:true},
+    {key:'mname_en', label:'ชื่อกลาง(EN)', col:'H', en:true},
+    {key:'dob', label:'วันเกิด', col:'I'},
+    {key:'issue_date', label:'วันออกบัตร', col:'J'},
+    {key:'expiry_date', label:'วันหมดอายุ', col:'K'},
+    {key:'addr1', label:'เลขที่/อาคาร', col:'L'},
+    {key:'soi', label:'หมู่/ซอย', col:'M'},
+    {key:'road', label:'ถนน', col:'N'},
+    {key:'province', label:'จังหวัด', col:'O'},
+    {key:'district', label:'เขต/อำเภอ', col:'P'},
+    {key:'subdistrict', label:'แขวง/ตำบล', col:'Q'},
+    {key:'phone', label:'โทรศัพท์', col:'R'},
+    {key:'email', label:'E-Mail', col:'S'},
+  ];
+
+  container.innerHTML = `
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          ${cols.map(c=>`<th><span class="col-th">${c.col}</span>${c.label}</th>`).join('')}
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        ${records.map((r,i)=>`
+          <tr>
+            <td class="row-num">${i+1}</td>
+            ${cols.map(c=>`<td class="${c.en?'en-cell':''}" title="${r[c.key]||''}">${r[c.key]||''}</td>`).join('')}
+            <td><button class="del-btn" onclick="deleteRecord(${r._id})" title="ลบ">✕</button></td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+// ─── EXPORT EXCEL ─────────────────────────────────────
+function exportExcel() {
+  if (records.length === 0) { showToast('⚠️ ไม่มีข้อมูลให้ส่งออก', 'error'); return; }
+
+  const wb = XLSX.utils.book_new();
+
+  const header = [
+    'หมายเลขบัตรประชาชน (13 หลัก)',
+    'คำนำหน้าชื่อ (ภาษาไทย)',
+    'ชื่อ (ภาษาไทย)',
+    'นามสกุล (ภาษาไทย)',
+    'ชื่อกลาง (ถ้ามี) (ภาษาไทย)',
+    'ชื่อ (ภาษาอังกฤษ)',
+    'นามสกุล (ภาษาอังกฤษ)',
+    'ชื่อกลาง (ถ้ามี) (ภาษาอังกฤษ)',
+    'วัน/เดือน/ปี เกิด (DD/MM/YYYY พ.ศ.)',
+    'วันออกบัตร (DD/MM/YYYY พ.ศ.)',
+    'วันหมดอายุบัตร (DD/MM/YYYY พ.ศ.)',
+    'เลขที่/หมู่อาคาร/ชั้น/หมู่บ้าน',
+    'หมู่ที่/ตรอก/ซอย',
+    'ถนน',
+    'จังหวัด',
+    'เขต/อำเภอ',
+    'แขวง/ตำบล',
+    'โทรศัพท์ (มือถือ)',
+    'E-Mail',
+  ];
+
+  const dataRows = records.map(r => [
+    r.id, r.prefix_th, r.fname_th, r.lname_th, r.mname_th,
+    r.fname_en, r.lname_en, r.mname_en,
+    r.dob, r.issue_date, r.expiry_date,
+    r.addr1, r.soi, r.road, r.province, r.district, r.subdistrict,
+    r.phone, r.email,
+  ]);
+
+  const ws_sheet = XLSX.utils.aoa_to_sheet([header, ...dataRows]);
+
+  ws_sheet['!cols'] = [
+    {wch:18},{wch:12},{wch:16},{wch:18},{wch:16},
+    {wch:16},{wch:18},{wch:16},{wch:16},{wch:16},
+    {wch:16},{wch:18},{wch:10},{wch:14},{wch:20},
+    {wch:14},{wch:14},{wch:14},{wch:24},
+  ];
+
+  XLSX.utils.book_append_sheet(wb, ws_sheet, 'Master');
+
+  const date = new Date();
+  const stamp = `${date.getFullYear()}${String(date.getMonth()+1).padStart(2,'0')}${String(date.getDate()).padStart(2,'0')}`;
+  const filename = `OpenAccount_Batch_${stamp}_${records.length}records.xlsx`;
+
+  XLSX.writeFile(wb, filename);
+  showToast(`📥 ส่งออก ${records.length} รายการเป็น Excel แล้ว`, 'success');
+}
+
+// ─── BACKUP / RESTORE JSON ────────────────────────────
+function exportBackup() {
+  if (records.length === 0) { showToast('⚠️ ไม่มีข้อมูลให้ Backup', 'error'); return; }
+  const payload = {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    count: records.length,
+    maxId: recordIdCounter,
+    records: records
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const date = new Date();
+  const stamp = `${date.getFullYear()}${String(date.getMonth()+1).padStart(2,'0')}${String(date.getDate()).padStart(2,'0')}_${String(date.getHours()).padStart(2,'0')}${String(date.getMinutes()).padStart(2,'0')}`;
+  a.href = url;
+  a.download = `ThaiID_Backup_${stamp}_${records.length}records.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast(`💾 Backup ${records.length} รายการสำเร็จ`, 'success');
+}
+
+function importBackup() {
+  document.getElementById('importFileInput').click();
+}
+
+function handleImportFile(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const payload = JSON.parse(e.target.result);
+      if (!payload.records || !Array.isArray(payload.records)) throw new Error('รูปแบบไฟล์ไม่ถูกต้อง');
+
+      const msg = records.length > 0
+        ? `มีข้อมูล ${records.length} รายการอยู่แล้ว\nต้องการ:\n[ตกลง] = เพิ่มต่อ\n[ยกเลิก] = แทนที่ทั้งหมด`
+        : null;
+
+      let merge = false;
+      if (msg) merge = confirm(msg);
+
+      if (merge) {
+        // Append, re-assign _id to avoid collision
+        const offset = recordIdCounter;
+        const newRecs = payload.records.map((r, i) => ({ ...r, _id: offset + i + 1 }));
+        records = [...records, ...newRecs];
+        recordIdCounter = offset + payload.records.length;
+      } else {
+        records = payload.records;
+        recordIdCounter = payload.maxId || payload.records.reduce((mx, r) => Math.max(mx, r._id || 0), 0);
+      }
+
+      saveToStorage();
+      renderTable();
+      updateCounter();
+      showToast(`📂 โหลด Backup ${payload.records.length} รายการสำเร็จ`, 'success');
+    } catch(err) {
+      showToast('❌ โหลดไฟล์ไม่สำเร็จ: ' + err.message, 'error');
+    }
+    event.target.value = '';
+  };
+  reader.readAsText(file);
+}
+
+// ─── UI HELPERS ──────────────────────────────────────
+function updateCounter() {
+  const n = records.length;
+  document.getElementById('counterBadge').textContent = `${n} รายการ`;
+  document.getElementById('footerCount').textContent = `${n} / 500 รายการ`;
+  document.getElementById('progressBar').style.width = Math.min(n/500*100,100) + '%';
+}
+
+function setStatus(msg, type) {
+  document.getElementById('statusText').textContent = msg;
+  const dot = document.getElementById('statusDot');
+  dot.className = 'dot' + (type === 'green' ? ' green' : type === 'yellow' ? ' yellow' : '');
+}
+
+let toastTimer;
+function showToast(msg, type='success') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show ' + type;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>{ t.className = 'toast'; }, 3500);
+}
+
+// ─── KEYBOARD SHORTCUTS ──────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !document.getElementById('manualModal').classList.contains('show')) {
+    if (currentCard) addRecord();
+  }
+  if (e.key === 'Escape') closeModal();
+});
+
+// ─── PREVENT ACCIDENTAL NAVIGATION ───────────────────
+window.addEventListener('beforeunload', (e) => {
+  if (records.length > 0) {
+    e.preventDefault();
+    e.returnValue = `มีข้อมูล ${records.length} รายการที่ยังไม่ได้ส่งออก Excel\nข้อมูลถูกบันทึกอัตโนมัติแล้วและจะโหลดกลับมาเมื่อเปิดหน้านี้ใหม่`;
+    return e.returnValue;
+  }
+});
+</script>
+</body>
+</html>
