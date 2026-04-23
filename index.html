@@ -1288,6 +1288,18 @@ function closeModal() {
   document.getElementById('manualModal').classList.remove('show');
 }
 
+// ─── DATE CONVERSION: ค.ศ. → พ.ศ. ────────────────────
+function toBuddhistYear(dateStr) {
+  if (!dateStr) return '';
+  // Match DD/MM/YYYY
+  const m = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (!m) return dateStr; // return as-is if format unrecognized
+  const year = parseInt(m[3]);
+  // If year is already พ.ศ. (> 2400), don't convert again
+  if (year > 2400) return dateStr;
+  return `${m[1]}/${m[2]}/${year + 543}`;
+}
+
 // ─── ADD RECORD ───────────────────────────────────────
 function addRecord() {
   if (!currentCard) return;
@@ -1304,9 +1316,9 @@ function addRecord() {
     fname_en: (currentCard.fname_en || '').toUpperCase(),
     lname_en: (currentCard.lname_en || '').toUpperCase(),
     mname_en: (currentCard.mname_en || '').toUpperCase(),
-    dob: currentCard.dob || '',
-    issue_date: currentCard.issue_date || '',
-    expiry_date: currentCard.expiry_date || '',
+    dob: toBuddhistYear(currentCard.dob || ''),
+    issue_date: toBuddhistYear(currentCard.issue_date || ''),
+    expiry_date: toBuddhistYear(currentCard.expiry_date || ''),
     addr1: currentCard.addr1 || '',
     soi: currentCard.soi || '',
     road: currentCard.road || '',
