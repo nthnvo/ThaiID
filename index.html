@@ -1120,7 +1120,82 @@ function simulateCardRead() {
   }, 1200);
 }
 
+// ─── PARSE THAI ADDRESS STRING → FIELDS ──────────────
+function parseThaiAddress(card) {
+  // If the card already has proper separate fields, don't overwrite them
+  const alreadySplit = card.soi || card.road || card.province || card.district || card.subdistrict;
+  if (alreadySplit) return card;
+
+  // Try to parse from addr1 if it's a long combined address string
+  const raw = (card.addr1 || '').trim();
+  if (!raw) return card;
+
+  const result = {
+    addr1: raw,
+    soi: '',
+    road: '',
+    province: '',
+    district: '',
+    subdistrict: '',
+  };
+
+  // Extract จังหวัด (Province)
+  const provMatch = raw.match(/จังหวัด([^\s]+(?:\s+[^\s]+)*?)(?:\s+(?:เขต|อำเภอ|แขวง|ตำบล|ถนน|ซอย|หมู่|$))/);
+  if (provMatch) result.province = provMatch[1].trim();
+  // กรุงเทพมหานคร special case (doesn't use "จังหวัด" prefix)
+  if (!result.province) {
+    const bkkMatch = raw.match(/กรุงเทพมหานคร/);
+    if (bkkMatch) result.province = 'กรุงเทพมหานคร';
+  }
+  // Match at end of string too
+  if (!result.province) {
+    const provEnd = raw.match(/จังหวัด(\S+)$/);
+    if (provEnd) result.province = provEnd[1].trim();
+  }
+
+  // Extract เขต/อำเภอ (District)
+  const distMatch = raw.match(/(?:เขต|อำเภอ)([^\s]+(?:\s+[^\s]+)*?)(?:\s+(?:จังหวัด|กรุงเทพ|$))/);
+  if (distMatch) result.district = distMatch[1].trim();
+  if (!result.district) {
+    const distEnd = raw.match(/(?:เขต|อำเภอ)(\S+)/);
+    if (distEnd) result.district = distEnd[1].trim();
+  }
+
+  // Extract แขวง/ตำบล (Subdistrict)
+  const subMatch = raw.match(/(?:แขวง|ตำบล)([^\s]+(?:\s+[^\s]+)*?)(?:\s+(?:เขต|อำเภอ|จังหวัด|กรุงเทพ|$))/);
+  if (subMatch) result.subdistrict = subMatch[1].trim();
+  if (!result.subdistrict) {
+    const subEnd = raw.match(/(?:แขวง|ตำบล)(\S+)/);
+    if (subEnd) result.subdistrict = subEnd[1].trim();
+  }
+
+  // Extract ถนน (Road)
+  const roadMatch = raw.match(/ถนน([^\s]+(?:\s+[^\s]+)*?)(?:\s+(?:แขวง|ตำบล|เขต|อำเภอ|จังหวัด|กรุงเทพ|$))/);
+  if (roadMatch) result.road = roadMatch[1].trim();
+  if (!result.road) {
+    const roadEnd = raw.match(/ถนน(\S+)/);
+    if (roadEnd) result.road = roadEnd[1].trim();
+  }
+
+  // Extract ซอย (Soi) — can appear as "ซอย X" or "ซ. X"
+  const soiMatch = raw.match(/(?:ซอย|ซ\.)([^\s]+(?:\s+[^\s]+)*?)(?:\s+(?:ถนน|แขวง|ตำบล|เขต|อำเภอ|จังหวัด|กรุงเทพ|$))/);
+  if (soiMatch) result.soi = soiMatch[1].trim();
+  if (!result.soi) {
+    const soiEnd = raw.match(/(?:ซอย|ซ\.)(\S+)/);
+    if (soiEnd) result.soi = soiEnd[1].trim();
+  }
+
+  // Trim addr1 to just the number/building part (before first keyword)
+  const firstKeywordIdx = raw.search(/ซอย|ซ\.|ถนน|แขวง|ตำบล|เขต|อำเภอ|จังหวัด|หมู่ที่|หมู่/);
+  if (firstKeywordIdx > 0) {
+    result.addr1 = raw.substring(0, firstKeywordIdx).replace(/\s+$/, '');
+  }
+
+  return { ...card, ...result };
+}
+
 function loadCardData(card) {
+  card = parseThaiAddress(card);
   currentCard = card;
   const status = document.getElementById('readerStatus');
   if (!wsConnected) status.className = 'reader-status loaded';
@@ -1146,12 +1221,12 @@ function renderCardFields(card) {
     ['วันเกิด', card.dob],
     ['วันออกบัตร', card.issue_date],
     ['วันหมดอายุ', card.expiry_date],
-    ['ที่อยู่', card.addr1],
+    ['เลขที่/อาคาร', card.addr1],
     ['ซอย', card.soi || '-'],
     ['ถนน', card.road || '-'],
-    ['จังหวัด', card.province],
-    ['เขต/อำเภอ', card.district],
-    ['แขวง/ตำบล', card.subdistrict],
+    ['จังหวัด', card.province || '-'],
+    ['เขต/อำเภอ', card.district || '-'],
+    ['แขวง/ตำบล', card.subdistrict || '-'],
   ];
 
   document.getElementById('cardFields').innerHTML = fields.map(([label, val, en]) => `
